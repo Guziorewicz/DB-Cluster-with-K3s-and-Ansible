@@ -1,4 +1,4 @@
-# Another version of cluser with k3s and helm charts
+# Example of cluster with k3s and helm charts
 deps - ansible, helm, k3s, terraform, docker 
 
 usage for - mongo, postgres with prometheus
