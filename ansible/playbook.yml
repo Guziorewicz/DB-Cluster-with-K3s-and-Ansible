@@ -1,0 +1,161 @@
+- name: K3s & Helm Initialization
+  hosts: localhost
+  become: true
+  tags: [init]
+
+  tasks:
+    - name: Check if K3s is already installed
+      stat:
+        path: /usr/local/bin/k3s
+      register: k3s_installed
+
+    - name: Install K3s if not present
+      shell: |
+        curl -sfL https://get.k3s.io | sh -
+      when: not k3s_installed.stat.exists
+
+    - name: Copy K3s kubeconfig to ~/.kube/config
+      shell: |
+        mkdir -p ~/.kube
+        cp /etc/rancher/k3s/k3s.yaml ~/.kube/config
+        chown $USER: ~/.kube/config
+      environment:
+        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+
+    - name: Install Helm if not present
+      stat:
+        path: /usr/local/bin/helm
+      register: helm_installed
+
+    - name: Download and install Helm
+      shell: |
+        curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+      when: not helm_installed.stat.exists
+
+    - name: Add Bitnami Helm repo
+      shell: helm repo add bitnami https://charts.bitnami.com/bitnami
+
+    - name: Update Helm repos
+      shell: helm repo update
+
+- name: Install Mongo, PostgreSQL and Prometheus
+  hosts: localhost
+  become: true
+  tags: [init-dbs]
+
+  tasks:
+
+  - name: Check if MongoDB is already installed
+    shell: helm list -q | grep -w mongodb
+    register: mongodb_installed
+    failed_when: false
+    changed_when: false
+
+  - name: Install MongoDB via Helm
+    when: mongodb_installed.stdout == ""
+    shell: |
+      helm install mongodb bitnami/mongodb \
+        --set auth.rootPassword={{ mongodb_root_password }} \
+        --set auth.username={{ mongodb_user }} \
+        --set auth.password={{ mongodb_pass }} \
+        --set auth.database={{ mongodb_db }} \
+        --set service.type=NodePort \
+        --set service.nodePorts.mongodb={{ mongodb_port }}
+
+  - name: Check if PostgreSQL is already installed
+    shell: helm list -q | grep -w postgresql
+    register: postgresql_installed
+    failed_when: false
+    changed_when: false
+
+  - name: Install PostgreSQL via Helm
+    when: postgresql_installed.stdout == ""
+    shell: |
+      helm install postgresql bitnami/postgresql \
+        --set auth.postgresPassword={{ postgres_pass }} \
+        --set auth.username={{ postgres_user }} \
+        --set auth.password={{ postgres_pass }} \
+        --set auth.database={{ postgres_db }} \
+        --set service.type=NodePort \
+        --set service.nodePort={{ postgres_port }}
+  
+  - name: Add Prometheus Helm repo
+    shell: helm repo add prometheus-community {{ helm_repo_prometheus }}
+  
+  - name: Install Prometheus via Helm
+    shell: |
+      helm install prometheus prometheus-community/prometheus
+  
+
+- name: Install pgAdmin and Mongo Express
+  hosts: localhost
+  become: true
+  tags: [init-gui]
+
+  tasks:
+
+  - name: Check if pgAdmin is already installed
+    shell: helm list -q | grep -w pgadmin4
+    register: pgadmin_installed
+    failed_when: false
+    changed_when: false
+
+  - name: Install pgAdmin via Helm
+    when: pgadmin_installed.stdout == ""
+    shell: |
+      helm repo add runix {{ helm_repo_pgadmin }}
+      helm install pgadmin4 runix/pgadmin4 \
+        --set pgadminUsername={{ pgadmin_user }} \
+        --set pgadminPassword={{ pgadmin_pass }} \
+        --set service.type=NodePort \
+        --set service.nodePort={{ pgadmin_port }}
+  
+  - name: Check if Mongo Express is already installed
+    shell: helm list -q | grep -w mongo-express
+    register: mongo_express_installed
+    failed_when: false
+    changed_when: false
+  
+  - name: Install Mongo Express via Helm (with initContainer wait for MongoDB)
+    when: mongo_express_installed.stdout == ""
+    shell: |
+      helm upgrade --install mongo-express cowboysysop/mongo-express \
+        --set mongodbServer=mongodb \
+        --set mongodbAdminUsername={{ mongoexpress_user }} \
+        --set mongodbAdminPassword={{ mongoexpress_pass }} \
+        --set service.type=NodePort \
+        --set service.nodePort={{ mongoexpress_port }} \
+        --set env[0].name=ME_CONFIG_MONGODB_URL \
+        --set env[0].value="mongodb://{{ mongoexpress_user }}:{{ mongoexpress_pass }}@mongodb:27017" \
+        --set initContainers[0].name=wait-for-mongo \
+        --set initContainers[0].image=busybox \
+        --set initContainers[0].command[0]=sh \
+        --set initContainers[0].command[1]=-c \
+        --set initContainers[0].command[2]="until nc -zv mongodb 27017; do echo waiting for mongodb; sleep 2; done"
+
+- name: Clean K3s Cluster
+  hosts: localhost
+  become: true
+  tags: [clean]
+
+  tasks:
+
+    - name: Uninstall Helm releases
+      shell: |
+        helm uninstall mongodb || true
+        helm uninstall postgresql || true
+        helm uninstall pgadmin4 || true
+        helm uninstall mongo-express || true
+        helm uninstall prometheus || true
+
+    - name: Delete all Kubernetes resources (optional)
+      shell: |
+        kubectl delete all --all --force --grace-period=0
+
+    - name: Reset K3s cluster (optional, dangerous)
+      shell: |
+        /usr/local/bin/k3s-uninstall.sh
+      when: reset_k3s | default(false)
+
+
+
