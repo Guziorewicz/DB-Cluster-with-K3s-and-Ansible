@@ -11,19 +11,6 @@ postgres_pass: pgpass123
 postgres_db: devdb
 postgres_port: 30074
 
-# pgAdmin Configuration
-pgadmin_user: admin
-pgadmin_pass: admin
-pgadmin_port: 30078
-
-# Mongo Express Configuration
-mongoexpress_user: devuser
-mongoexpress_pass: admin123
-mongoexpress_port: 30088
-
 # Helm Repositories
 helm_repo_bitnami: https://charts.bitnami.com/bitnami
 helm_repo_prometheus: https://prometheus-community.github.io/helm-charts
-helm_repo_pgadmin: https://helm.runix.net
-helm_repo_mongoexpress: https://cowboysysop.github.io/charts
-

@@ -87,52 +87,6 @@
       helm install prometheus prometheus-community/prometheus
   
 
-- name: Install pgAdmin and Mongo Express
-  hosts: localhost
-  become: true
-  tags: [init-gui]
-
-  tasks:
-
-  - name: Check if pgAdmin is already installed
-    shell: helm list -q | grep -w pgadmin4
-    register: pgadmin_installed
-    failed_when: false
-    changed_when: false
-
-  - name: Install pgAdmin via Helm
-    when: pgadmin_installed.stdout == ""
-    shell: |
-      helm repo add runix {{ helm_repo_pgadmin }}
-      helm install pgadmin4 runix/pgadmin4 \
-        --set pgadminUsername={{ pgadmin_user }} \
-        --set pgadminPassword={{ pgadmin_pass }} \
-        --set service.type=NodePort \
-        --set service.nodePort={{ pgadmin_port }}
-  
-  - name: Check if Mongo Express is already installed
-    shell: helm list -q | grep -w mongo-express
-    register: mongo_express_installed
-    failed_when: false
-    changed_when: false
-  
-  - name: Install Mongo Express via Helm (with initContainer wait for MongoDB)
-    when: mongo_express_installed.stdout == ""
-    shell: |
-      helm upgrade --install mongo-express cowboysysop/mongo-express \
-        --set mongodbServer=mongodb \
-        --set mongodbAdminUsername={{ mongoexpress_user }} \
-        --set mongodbAdminPassword={{ mongoexpress_pass }} \
-        --set service.type=NodePort \
-        --set service.nodePort={{ mongoexpress_port }} \
-        --set env[0].name=ME_CONFIG_MONGODB_URL \
-        --set env[0].value="mongodb://{{ mongoexpress_user }}:{{ mongoexpress_pass }}@mongodb:27017" \
-        --set initContainers[0].name=wait-for-mongo \
-        --set initContainers[0].image=busybox \
-        --set initContainers[0].command[0]=sh \
-        --set initContainers[0].command[1]=-c \
-        --set initContainers[0].command[2]="until nc -zv mongodb 27017; do echo waiting for mongodb; sleep 2; done"
-
 - name: Clean K3s Cluster
   hosts: localhost
   become: true
